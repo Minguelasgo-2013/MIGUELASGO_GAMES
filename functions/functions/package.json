@@ -1,0 +1,13 @@
+
+{
+  "name": "functions",
+  "description": "MINGUELASGO GAMES account deletion",
+  "main": "index.js",
+  "engines": {
+    "node": "20"
+  },
+  "dependencies": {
+    "firebase-admin": "^13.0.0",
+    "firebase-functions": "^6.0.0"
+  }
+}
