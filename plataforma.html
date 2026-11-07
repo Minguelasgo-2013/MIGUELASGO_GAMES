@@ -823,6 +823,7 @@ footer{background:linear-gradient(180deg,rgba(7,13,27,.65),rgba(3,7,16,.96));bor
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-functions-compat.js"></script>
 <script>
 firebase.initializeApp({
     apiKey:"AIzaSyCyKZLCvvj6rW8VktyLjF53Smc7o9Q4LbY",
@@ -1780,7 +1781,7 @@ db.collection('comments').onSnapshot(function(snap){
       var b=bans[p.uid];
       return '<div class="adm-row'+(b?' banned':'')+'"><div class="adm-info"><div class="adm-name">'+esc(p.name)+(b?'<span class="adm-tag">BANEADO</span>':'')+'</div>'+
         '<div class="adm-sub">'+esc(p.uid)+', '+p.score+' pts'+(b?'. Motivo: '+esc(b.reason||'sin motivo'):'')+'</div></div>'+
-        '<button class="adm-btn notify" data-uid="'+encodeURIComponent(p.uid)+'" style="margin-right:6px">Avisar</button><button class="adm-btn '+(b?'unban':'ban')+'" data-uid="'+encodeURIComponent(p.uid)+'">'+(b?'Desbanear':'Banear')+'</button></div>';
+        '<button class="adm-btn notify" data-uid="'+encodeURIComponent(p.uid)+'" style="margin-right:6px">Avisar</button><button class="adm-btn '+(b?'unban':'ban')+'" data-uid="'+encodeURIComponent(p.uid)+'">'+(b?'Desbanear':'Banear')+'</button><button class="adm-btn delete-account" data-uid="'+encodeURIComponent(p.uid)+'" style="background:#8b1e3f;margin-left:5px">Eliminar cuenta</button></div>';
     }).join(''):'<div class="notif-empty">Sin resultados</div>';
   }
 
@@ -1813,7 +1814,9 @@ db.collection('comments').onSnapshot(function(snap){
     var b=e.target.closest('.adm-btn');if(!b||!isAdmin)return;
     var uid=decodeURIComponent(b.getAttribute('data-uid'));
     if(b.classList.contains('notify'))notifyOne(uid);
-    else if(b.classList.contains('unban'))unban(uid);else ban(uid);
+    else if(b.classList.contains('delete-account'))deleteAccount(uid,b);
+    else if(b.classList.contains('unban'))unban(uid);
+    else if(b.classList.contains('ban'))ban(uid);
   });
   document.getElementById('adminNotifAll').onclick=function(){
     var t=document.getElementById('adminNotifText').value.trim();
@@ -1823,6 +1826,33 @@ db.collection('comments').onSnapshot(function(snap){
       showToast('Notificación enviada a todos','success');document.getElementById('adminNotifText').value='';
     }).catch(function(e){showToast('Error: '+e.message,'warning');});
   };
+  /* Elimina Authentication + datos asociados mediante una Cloud Function segura. */
+  async function deleteAccount(uid,button){
+    if(!isAdmin||!auth.currentUser)return;
+    if(uid===auth.currentUser.uid){
+      showToast('No puedes eliminar tu propia cuenta de administrador','warning');
+      return;
+    }
+    var target=players.find(function(p){return p.uid===uid;});
+    var label=target?target.name:uid;
+    if(!confirm('⚠️ ELIMINACIÓN PERMANENTE\\n\\nVas a borrar la cuenta de '+label+' y su usuario de Firebase Authentication. Esta acción no se puede deshacer.\\n\\n¿Continuar?'))return;
+    if(button)button.disabled=true;
+    try{
+      var callable=firebase.app().functions('europe-west1').httpsCallable('deleteUserAccount');
+      await callable({uid:uid});
+      showToast('Cuenta eliminada correctamente','success');
+    }catch(e){
+      console.error('Error eliminando cuenta:',e);
+      var msg=e&&e.code==='functions/not-found'
+        ?'No existe ese usuario en Authentication.'
+        :e&&e.code==='functions/permission-denied'
+          ?'El servidor no te reconoce como administrador.'
+          :'No se pudo eliminar: '+(e.message||'error desconocido');
+      showToast(msg,'warning');
+      if(button)button.disabled=false;
+    }
+  }
+
   function notifyOne(uid){
     var el=document.getElementById('adminNotifText'),t=el.value.trim();
     if(!t){t=(prompt('Mensaje para este jugador:')||'').trim();if(!t)return;}
